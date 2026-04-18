@@ -53,9 +53,11 @@ app.use((req, res, next) => {
 
 // Prevent process from crashing on uncaught errors
 process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 const MIRROR_HOSTS = [
@@ -1261,62 +1263,81 @@ app.get('/api/stream', async (req, res) => {
                 return;
             }
             
-            res.status(206).set({
-                'Content-Type': contentType,
-                'Content-Length': chunkSize,
-                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'no-cache',
-                'Access-Control-Allow-Origin': '*',
-                'X-Content-Type-Options': 'nosniff'
-            });
-            
-            response.data.pipe(res);
-            res.on('close', () => response.data.destroy());
-            response.data.on('error', (e) => {
-                res.end();
-            });
-        } else {
-            const response = await axios({
-                method: 'GET',
-                url: streamUrl,
-                responseType: 'stream',
-                timeout: 0,
-                headers,
-                validateStatus: (status) => status < 500 // Allow 4xx errors
-            });
-
-            if (response.status >= 400) {
-                if (!res.headersSent) {
-                    return res.status(response.status).json({
-                        status: 'error',
-                        message: `Upstream server returned ${response.status}`,
-                        url: streamUrl
-                    });
-                }
-                return;
+        res.status(206).set({
+            'Content-Type': contentType,
+            'Content-Length': chunkSize,
+            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': '*',
+            'X-Content-Type-Options': 'nosniff'
+        });
+        
+        response.data.pipe(res);
+        
+        res.on('close', () => {
+            if (response.data && typeof response.data.destroy === 'function') {
+                response.data.destroy();
             }
-            
-            res.status(200).set({
-                'Content-Type': contentType,
-                'Content-Length': fileSize,
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'no-cache',
-                'Access-Control-Allow-Origin': '*',
-                'X-Content-Type-Options': 'nosniff'
-            });
-            
-            response.data.pipe(res);
-            res.on('close', () => response.data.destroy());
-            response.data.on('error', (e) => {
+        });
+
+        response.data.on('error', (e) => {
+            console.error('Stream pipe error:', e.message);
+            if (!res.headersSent) {
                 res.end();
-            });
+            }
+        });
+    } else {
+        const response = await axios({
+            method: 'GET',
+            url: streamUrl,
+            responseType: 'stream',
+            timeout: 0,
+            headers,
+            validateStatus: (status) => status < 500
+        });
+
+        if (response.status >= 400) {
+            if (!res.headersSent) {
+                return res.status(response.status).json({
+                    status: 'error',
+                    message: `Upstream server returned ${response.status}`,
+                    url: streamUrl
+                });
+            }
+            return;
         }
-    } catch (error) {
-        if (!res.headersSent) {
-            res.status(500).json({ status: 'error', message: 'Failed to stream video', error: error.message });
-        }
+        
+        res.status(200).set({
+            'Content-Type': contentType,
+            'Content-Length': fileSize,
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': '*',
+            'X-Content-Type-Options': 'nosniff'
+        });
+        
+        response.data.pipe(res);
+        
+        res.on('close', () => {
+            if (response.data && typeof response.data.destroy === 'function') {
+                response.data.destroy();
+            }
+        });
+
+        response.data.on('error', (e) => {
+            console.error('Stream pipe error:', e.message);
+            if (!res.headersSent) {
+                res.end();
+            }
+        });
     }
+} catch (error) {
+    console.error('Streaming proxy error:', error.message);
+    if (!res.headersSent) {
+        res.status(500).json({ status: 'error', message: 'Failed to stream video', error: error.message });
+    }
+}
 });
 
 // Helper function to sanitize filename

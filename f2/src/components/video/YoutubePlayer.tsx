@@ -149,7 +149,14 @@ export function YoutubePlayer(props: {
         playsInline
         crossOrigin="anonymous"
         onClick={togglePlay}
-        onError={() => setError('Failed to load video.')}
+        onError={(e) => {
+          const videoElement = e.currentTarget;
+          if (videoElement.error) {
+            console.error('Video error code:', videoElement.error.code);
+            console.error('Video error message:', videoElement.error.message);
+          }
+          setError(`Failed to load video. (Source: ${selected?.label})`);
+        }}
       >
         {props.subtitles?.map(sub => (
           <track
