@@ -1157,9 +1157,9 @@ app.get('/api/stream', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'No stream URL provided' });
         }
         
-        // Allowed hosts check
-        const allowedHosts = ['hakunaymatata.com', 'aoneroom.com', 'moviebox', 'valiw', 'bcdnw'];
-        if (!allowedHosts.some(host => streamUrl.includes(host)) && !streamUrl.startsWith('http')) {
+        // Allowed hosts check - keeping it broad for compatibility
+        const allowedHosts = ['hakunaymatata.com', 'aoneroom.com', 'moviebox', 'valiw', 'bcdnw', 'video', 'cdn', 'google', 'akamai'];
+        if (!allowedHosts.some(host => streamUrl.toLowerCase().includes(host)) && !streamUrl.startsWith('http')) {
             return res.status(400).json({ status: 'error', message: 'Invalid stream URL' });
         }
         

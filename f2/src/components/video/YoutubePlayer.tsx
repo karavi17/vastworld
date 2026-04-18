@@ -147,7 +147,6 @@ export function YoutubePlayer(props: {
         className="w-full h-full"
         autoPlay={props.autoPlay}
         playsInline
-        crossOrigin="anonymous"
         onClick={togglePlay}
         onError={(e) => {
           const videoElement = e.currentTarget;
