@@ -44,6 +44,15 @@ export function YoutubePlayer(props: {
     [props.sources, props.selectedSourceId]
   );
 
+  if (!props.sources.length) {
+    return (
+      <div className="relative aspect-video bg-zinc-900 rounded-xl flex flex-col items-center justify-center text-zinc-500 overflow-hidden">
+        <div className="w-10 h-10 border-4 border-zinc-700 border-t-red-600 rounded-full animate-spin mb-3" />
+        <p className="text-sm font-medium">Preparing player...</p>
+      </div>
+    );
+  }
+
   const isPlayingRef = useRef(isPlaying);
   const currentTimeRef = useRef(currentTime);
 
@@ -58,7 +67,7 @@ export function YoutubePlayer(props: {
   // Handle source change without losing progress
   useEffect(() => {
     const el = videoRef.current;
-    if (!el) return;
+    if (!el || !selected?.src) return;
 
     const restoreProgress = () => {
       if (currentTimeRef.current > 0) {
@@ -71,7 +80,7 @@ export function YoutubePlayer(props: {
 
     el.addEventListener('loadedmetadata', restoreProgress);
     return () => el.removeEventListener('loadedmetadata', restoreProgress);
-  }, [selected.src]);
+  }, [selected?.src]);
 
   useEffect(() => {
     const el = videoRef.current;
