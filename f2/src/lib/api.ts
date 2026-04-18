@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { ApiResponse, HomepageData, VideoItem, Subtitle } from '@/types';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'https://backend-production-ec2e.up.railway.app/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
