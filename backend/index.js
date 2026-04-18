@@ -53,11 +53,9 @@ app.use((req, res, next) => {
 
 // Prevent process from crashing on uncaught errors
 process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 const MIRROR_HOSTS = [
@@ -1089,6 +1087,7 @@ app.get('/api/sources/:movieId', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Sources error:', error.message, 'MovieID:', req.params.movieId);
         res.status(500).json({
             status: 'error',
             message: 'Failed to fetch streaming sources',
@@ -1157,9 +1156,9 @@ app.get('/api/stream', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'No stream URL provided' });
         }
         
-        // Allowed hosts check - keeping it broad for compatibility
-        const allowedHosts = ['hakunaymatata.com', 'aoneroom.com', 'moviebox', 'valiw', 'bcdnw', 'video', 'cdn', 'google', 'akamai'];
-        if (!allowedHosts.some(host => streamUrl.toLowerCase().includes(host)) && !streamUrl.startsWith('http')) {
+        // Allowed hosts check
+        const allowedHosts = ['hakunaymatata.com', 'aoneroom.com', 'moviebox', 'valiw', 'bcdnw'];
+        if (!allowedHosts.some(host => streamUrl.includes(host)) && !streamUrl.startsWith('http')) {
             return res.status(400).json({ status: 'error', message: 'Invalid stream URL' });
         }
         
@@ -1189,6 +1188,7 @@ app.get('/api/stream', async (req, res) => {
                 const testResponse = await axios({
                     method: 'GET',
                     url: streamUrl,
+                    responseType: 'stream',
                     headers: {
                         'User-Agent': 'okhttp/4.12.0',
                         'Referer': 'https://fmoviesunblocked.net/',
@@ -1263,81 +1263,63 @@ app.get('/api/stream', async (req, res) => {
                 return;
             }
             
-        res.status(206).set({
-            'Content-Type': contentType,
-            'Content-Length': chunkSize,
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Cache-Control': 'no-cache',
-            'Access-Control-Allow-Origin': '*',
-            'X-Content-Type-Options': 'nosniff'
-        });
-        
-        response.data.pipe(res);
-        
-        res.on('close', () => {
-            if (response.data && typeof response.data.destroy === 'function') {
-                response.data.destroy();
-            }
-        });
-
-        response.data.on('error', (e) => {
-            console.error('Stream pipe error:', e.message);
-            if (!res.headersSent) {
+            res.status(206).set({
+                'Content-Type': contentType,
+                'Content-Length': chunkSize,
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'no-cache',
+                'Access-Control-Allow-Origin': '*',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            
+            response.data.pipe(res);
+            res.on('close', () => response.data.destroy());
+            response.data.on('error', (e) => {
                 res.end();
-            }
-        });
-    } else {
-        const response = await axios({
-            method: 'GET',
-            url: streamUrl,
-            responseType: 'stream',
-            timeout: 0,
-            headers,
-            validateStatus: (status) => status < 500
-        });
+            });
+        } else {
+            const response = await axios({
+                method: 'GET',
+                url: streamUrl,
+                responseType: 'stream',
+                timeout: 0,
+                headers,
+                validateStatus: (status) => status < 500 // Allow 4xx errors
+            });
 
-        if (response.status >= 400) {
-            if (!res.headersSent) {
-                return res.status(response.status).json({
-                    status: 'error',
-                    message: `Upstream server returned ${response.status}`,
-                    url: streamUrl
-                });
+            if (response.status >= 400) {
+                if (!res.headersSent) {
+                    return res.status(response.status).json({
+                        status: 'error',
+                        message: `Upstream server returned ${response.status}`,
+                        url: streamUrl
+                    });
+                }
+                return;
             }
-            return;
+            
+            res.status(200).set({
+                'Content-Type': contentType,
+                'Content-Length': fileSize,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'no-cache',
+                'Access-Control-Allow-Origin': '*',
+                'X-Content-Type-Options': 'nosniff'
+            });
+            
+            response.data.pipe(res);
+            res.on('close', () => response.data.destroy());
+            response.data.on('error', (e) => {
+                res.end();
+            });
         }
-        
-        res.status(200).set({
-            'Content-Type': contentType,
-            'Content-Length': fileSize,
-            'Accept-Ranges': 'bytes',
-            'Cache-Control': 'no-cache',
-            'Access-Control-Allow-Origin': '*',
-            'X-Content-Type-Options': 'nosniff'
-        });
-        
-        response.data.pipe(res);
-        
-        res.on('close', () => {
-            if (response.data && typeof response.data.destroy === 'function') {
-                response.data.destroy();
-            }
-        });
-
-        response.data.on('error', (e) => {
-            console.error('Stream pipe error:', e.message);
-            if (!res.headersSent) {
-                res.end();
-            }
-        });
+    } catch (error) {
+        console.error('Streaming error:', error.message, 'URL:', req.query.url);
+        if (!res.headersSent) {
+            res.status(500).json({ status: 'error', message: 'Failed to stream video', error: error.message });
+        }
     }
-} catch (error) {
-    console.error('Streaming proxy error:', error.message);
-    if (!res.headersSent) {
-        res.status(500).json({ status: 'error', message: 'Failed to stream video', error: error.message });
-    }
-}
 });
 
 // Helper function to sanitize filename
