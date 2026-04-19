@@ -18,7 +18,7 @@ export default defineConfig({
     port: 3002,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://backend-production-f705.up.railway.app',
         changeOrigin: true,
       },
     },
