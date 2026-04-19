@@ -27,6 +27,8 @@ export default function SearchPage() {
       if (entries[0].isIntersecting && hasMore) {
         setPage(prevPage => prevPage + 1);
       }
+    }, {
+      rootMargin: '200px', // Start loading before reaching the very end
     });
     
     if (node) observer.current.observe(node);

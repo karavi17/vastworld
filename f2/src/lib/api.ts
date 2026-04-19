@@ -1,10 +1,7 @@
 import axios from 'axios';
 import type { ApiResponse, HomepageData, VideoItem, Subtitle } from '@/types';
 
-// Update this URL to your deployed backend URL (e.g., https://your-backend.vercel.app/api)
-// When running locally, it will fallback to '/api' which is proxied by Vite
-const PROD_BACKEND_URL = 'https://backend-production-ec2e.up.railway.app/api'; 
-const API_BASE_URL = import.meta.env.MODE === 'development' ? '/api' : PROD_BACKEND_URL;
+const API_BASE_URL = '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,

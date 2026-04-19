@@ -24,6 +24,8 @@ export default function Home() {
       if (entries[0].isIntersecting && hasMore) {
         setPage(prevPage => prevPage + 1);
       }
+    }, {
+      rootMargin: '200px', // Start loading before reaching the very end
     });
     
     if (node) observer.current.observe(node);
@@ -50,7 +52,7 @@ export default function Home() {
 
         if (trendingResponse.status === 'fulfilled' && trendingResponse.value.status === 'success' && trendingResponse.value.data.items) {
           setTrending(trendingResponse.value.data.items);
-          setHasMore(trendingResponse.value.data.items.length >= 12);
+          setHasMore(trendingResponse.value.data.items.length >= 10); // More relaxed check
         } else {
           setTrending([]);
           setHasMore(false);
@@ -83,7 +85,7 @@ export default function Home() {
               const uniqueNewItems = newItems.filter(v => !existingIds.has(v.subjectId));
               return [...prev, ...uniqueNewItems];
             });
-            setHasMore(newItems.length >= 12);
+            setHasMore(newItems.length >= 10);
           }
         }
       } catch (err) {

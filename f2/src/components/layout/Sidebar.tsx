@@ -1,4 +1,4 @@
-import { Home, Compass, Clock, History, ChevronRight, Download, X } from 'lucide-react';
+import { Home, Compass, Clock, ChevronRight, Download, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useUI } from '@/context/UIContext';
 
@@ -7,11 +7,10 @@ export const Sidebar = () => {
 
   const primaryLinks = [
     { icon: Home, label: 'Home', href: '/' },
-    { icon: Compass, label: 'Shorts', href: '/shorts' },
+    { icon: Compass, label: 'Shorts', href: '/search?q=shorts' },
   ];
 
   const libraryLinks = [
-    { icon: History, label: 'History', href: '/history' },
     { icon: Clock, label: 'Watch later', href: '/watch-later' },
     { icon: Download, label: 'Downloads', href: '/downloads' },
   ];
