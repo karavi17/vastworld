@@ -6,6 +6,7 @@ import Search from './pages/Search';
 import Watch from './pages/Watch';
 import Downloads from './pages/Downloads';
 import WatchLater from './pages/WatchLater';
+import Docs from './pages/Docs';
 import { useUI } from './context/UIContext';
 import { useEffect } from 'react';
 
@@ -28,6 +29,7 @@ function App() {
           <Route path="/watch" element={<Watch />} />
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/watch-later" element={<WatchLater />} />
+          <Route path="/docs" element={<Docs />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>
