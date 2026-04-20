@@ -81,14 +81,15 @@ async function ensureCookiesAreAssigned() {
     }
 }
 
-// Centralized request handler
+// Centralized request handler with localhost spoofing
 async function makeApiRequestWithCookies(path, options = {}, lang = 'en') {
     await ensureCookiesAreAssigned();
     
     const url = `${HOST_URL}${path}`;
     const headers = {
         'User-Agent': 'okhttp/4.12.0',
-        'Referer': HOST_URL,
+        'Referer': 'http://localhost:3002/', // Spoof localhost
+        'Origin': 'http://localhost:3002',    // Spoof localhost
         'Accept-Language': lang === 'hi' ? 'hi-IN,hi;q=0.9,en-US;q=0.8,en;q=0.7' : 'en-US,en;q=0.9',
         'X-Client-Info': '{"timezone":"Africa/Nairobi"}',
         ...options.headers
@@ -447,27 +448,26 @@ app.get('/api/sources/:movieId', async (req, res) => {
     }
 });
 
-// Streaming proxy with range support
+// Streaming proxy with full range support for seeking and production stability
 app.get('/api/stream', async (req, res) => {
     try {
         const streamUrl = req.query.url;
         if (!streamUrl) return res.status(400).send('No URL provided');
         
         const range = req.headers.range;
-        
-        // Use a more browser-like User-Agent
         const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
         
-        // Comprehensive list of possible referers and user agents
+        // Comprehensive list of possible referers and user agents to bypass blocks
         const REFERER_LIST = [
-            HOST_URL,
-            'https://movieboxapp.in/',
+            'http://localhost:3002/', // Primary spoof target
             'https://h5.aoneroom.com/',
+            'https://movieboxapp.in/',
             'https://v.moviebox.ph/',
-            'https://fmoviesunblocked.net/'
+            'https://fmoviesunblocked.net/',
+            'https://netnaija.video/'
         ];
 
-        // Metadata caching
+        // Metadata caching for performance
         let metadata = fileSizeCache.get(streamUrl);
         if (!metadata) {
             if (metadataInProgress.has(streamUrl)) {
@@ -477,33 +477,35 @@ app.get('/api/stream', async (req, res) => {
                 const fetchMetadata = (async () => {
                     const configs = [];
                     REFERER_LIST.forEach(ref => {
-                        configs.push({ headers: { 'User-Agent': 'okhttp/4.12.0', 'Referer': ref } });
-                        configs.push({ headers: { 'User-Agent': userAgent, 'Referer': ref } });
+                        const origin = ref.startsWith('http://localhost') ? 'http://localhost:3002' : ref.slice(0, -1);
+                        configs.push({ headers: { 'User-Agent': 'okhttp/4.12.0', 'Referer': ref, 'Origin': origin } });
+                        configs.push({ headers: { 'User-Agent': userAgent, 'Referer': ref, 'Origin': origin } });
                     });
                     configs.push({ headers: { 'User-Agent': userAgent } });
 
                     for (const config of configs) {
                         try {
-                            const head = await axios.head(streamUrl, { timeout: 5000, ...config });
-                            console.log(`Stream metadata fetch successful with Referer: ${config.headers.Referer || 'None'}`);
+                            // Try HEAD first to get content length and type
+                            const head = await axios.head(streamUrl, { timeout: 8000, ...config });
                             const meta = { 
-                                size: parseInt(head.headers['content-length']), 
+                                size: parseInt(head.headers['content-length']) || 0, 
                                 type: head.headers['content-type'] || 'video/mp4',
-                                config // Save working config
+                                config // Save working config for the actual stream
                             };
-                            fileSizeCache.set(streamUrl, meta);
-                            return meta;
+                            if (meta.size > 0) {
+                                fileSizeCache.set(streamUrl, meta);
+                                return meta;
+                            }
                         } catch (e) { continue; }
                     }
 
-                    // Fallback to GET 0-1
+                    // Fallback to GET with small range if HEAD fails
                     for (const config of configs) {
                         try {
                             const getRes = await axios.get(streamUrl, { 
-                                timeout: 5000, 
+                                timeout: 8000, 
                                 headers: { ...config.headers, 'Range': 'bytes=0-1' } 
                             });
-                            console.log(`Stream metadata fetch (GET 0-1) successful with Referer: ${config.headers.Referer || 'None'}`);
                             const contentRange = getRes.headers['content-range'];
                             const size = contentRange ? parseInt(contentRange.split('/')[1]) : 0;
                             const meta = { 
@@ -515,7 +517,6 @@ app.get('/api/stream', async (req, res) => {
                             return meta;
                         } catch (e) { continue; }
                     }
-
                     return { size: 0, type: 'video/mp4', config: configs[0] };
                 })();
                 metadataInProgress.set(streamUrl, fetchMetadata);
@@ -529,19 +530,27 @@ app.get('/api/stream', async (req, res) => {
         }
         
         const { size: fileSize, type: contentType, config: workingConfig } = metadata;
-        const headers = workingConfig?.headers || { 'User-Agent': 'okhttp/4.12.0' };
+        const headers = { ...workingConfig?.headers };
 
+        // Handle partial content (Range requests)
         if (range && fileSize > 0) {
             const parts = range.replace(/bytes=/, "").split("-");
             const start = parseInt(parts[0], 10);
             const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+            
+            // Safety check for start/end
+            if (start >= fileSize) {
+                return res.status(416).send('Requested range not satisfiable\n' + start + ' >= ' + fileSize);
+            }
+            
             const chunksize = (end - start) + 1;
             
             const response = await axios({
                 method: 'get',
                 url: streamUrl,
                 responseType: 'stream',
-                headers: { ...headers, 'Range': `bytes=${start}-${end}` }
+                headers: { ...headers, 'Range': `bytes=${start}-${end}` },
+                timeout: 30000 // Longer timeout for streaming
             });
             
             res.writeHead(206, {
@@ -549,32 +558,43 @@ app.get('/api/stream', async (req, res) => {
                 'Accept-Ranges': 'bytes',
                 'Content-Length': chunksize,
                 'Content-Type': contentType,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Access-Control-Allow-Origin': '*'
             });
+            
             response.data.pipe(res);
-            res.on('close', () => response.data.destroy());
+            res.on('close', () => {
+                if (response.data) response.data.destroy();
+            });
         } else {
+            // Full content request
             const response = await axios({
                 method: 'get',
                 url: streamUrl,
                 responseType: 'stream',
-                headers: headers
+                headers: headers,
+                timeout: 30000
             });
             
             const resHeaders = {
                 'Content-Type': contentType,
                 'Access-Control-Allow-Origin': '*',
-                'Accept-Ranges': 'bytes'
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'no-cache'
             };
             if (fileSize > 0) resHeaders['Content-Length'] = fileSize;
             
             res.writeHead(200, resHeaders);
             response.data.pipe(res);
-            res.on('close', () => response.data.destroy());
+            res.on('close', () => {
+                if (response.data) response.data.destroy();
+            });
         }
     } catch (error) {
-        console.error('Stream Error for URL:', req.query.url, 'Error:', error.message);
-        if (!res.headersSent) res.status(500).send(error.message);
+        console.error('Stream Proxy Error:', error.message, 'URL:', req.query.url);
+        if (!res.headersSent) {
+            res.status(500).send(`Streaming failed: ${error.message}`);
+        }
     }
 });
 
